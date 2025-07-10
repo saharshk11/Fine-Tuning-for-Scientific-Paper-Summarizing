@@ -1,21 +1,25 @@
 use std::fs::File;
-use std::io::{self, BufRead};
-use std::path::Path;
+use std::io::{self, BufRead, BufReader};
+use serde::{Serialize, Deserialize};
 
-
-fn main() {
-    let data_path = "../data/raw/SciTLDR-AIC/dev.jsonl";
-    if let Ok(lines) = read_lines(data_path) {
-        // Consumes the iterator, returns an (Optional) String
-        for line in lines.map_while(Result::ok) {
-            println!("{}", line);
-            break;
-        }
-    }
+#[derive(Debug, Serialize, Deserialize)]
+struct Paper {
+    source: Vec<String>,
+    target: Vec<String>
 }
 
-fn read_lines<P>(filename: P) -> io::Result<io::Lines<io::BufReader<File>>>
-where P: AsRef<Path>, {
-    let file = File::open(filename)?;
-    Ok(io::BufReader::new(file).lines())
+
+fn main() -> io::Result<()> {
+    let data_path = "../data/raw/SciTLDR-AIC/dev.jsonl";
+    let file = File::open(data_path)?;
+    let reader = BufReader::new(file);
+
+    for line_result in reader.lines() {
+        let line = line_result?;
+        let paper: Paper = serde_json::from_str(&line)?;
+        println!("{:#?}", paper);
+        break;
+    }
+
+    Ok(())
 }
