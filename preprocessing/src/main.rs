@@ -3,9 +3,10 @@ use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::error::Error;
 use serde::{Deserialize, Serialize};
 use sentencepiece::SentencePieceProcessor;
+use indicatif::ProgressBar;
 
-const READ_PATH: &str = "../data/test-AIC/dev.jsonl";
-const WRITE_PATH: &str = "../data/test-AIC/processed/dev.jsonl";
+const READ_PATH: &str = "../data/raw/SciTLDR-FullText/train.jsonl";
+const WRITE_PATH: &str = "../data/processed/SciTLDR-FullText/train.jsonl";
 const MODEL_PATH: &str = "models/pegasus/spiece.model";
 const MAX_TOKENS: u32 = 1024;
 const OVERLAP: u32 = 512;
@@ -28,10 +29,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn process_file() -> Result<(), Box<dyn Error>> {
+    let line_count = {
+        let file = File::open(READ_PATH)?;
+        BufReader::new(file).lines().count() as u64
+    };
     let read_file = File::open(READ_PATH)?; 
     let reader = BufReader::new(read_file);
     let write_file = OpenOptions::new().create(true).append(true).open(WRITE_PATH)?;
     let mut writer = BufWriter::new(write_file);
+
+    let pb = ProgressBar::new(line_count);
 
     for line_result in reader.lines() { 
         let line = line_result?;
@@ -68,7 +75,10 @@ fn process_file() -> Result<(), Box<dyn Error>> {
         // write to file
         let json_line = serde_json::to_string(&processed)?;
         writeln!(writer, "{}", json_line)?;
+
+        pb.inc(1);
     } 
                                                                
+    pb.finish();
     Ok(())
 }
