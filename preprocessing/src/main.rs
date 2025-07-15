@@ -1,12 +1,14 @@
-use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::fs::{File, OpenOptions};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::error::Error;
-use serde::Deserialize;
-use sentencepiece::{SentencePieceProcessor, SentencePieceError};
+use serde::{Deserialize, Serialize};
+use sentencepiece::SentencePieceProcessor;
 
-const DATA_PATH: &str = "../data/test-AIC/dev.jsonl";
+const READ_PATH: &str = "../data/test-AIC/dev.jsonl";
+const WRITE_PATH: &str = "../data/test-AIC/processed/dev.jsonl";
 const MODEL_PATH: &str = "models/pegasus/spiece.model";
 const MAX_TOKENS: u32 = 1024;
+const OVERLAP: u32 = 512;
 
 #[derive(Debug, Deserialize)]
 struct RawPaper {
@@ -14,20 +16,28 @@ struct RawPaper {
     target: Vec<String>
 }
 
+#[derive(Debug, Serialize)]
+struct ProcessedPaper {
+    source: Vec<String>,
+    target: String
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
-    process_file(DATA_PATH)?;
+    process_file()?;
     Ok(())
 }
 
-fn process_file(path: &str) -> Result<(), Box<dyn Error>> {
-    let file = File::open(path)?; 
-    let reader = BufReader::new(file);
+fn process_file() -> Result<(), Box<dyn Error>> {
+    let read_file = File::open(READ_PATH)?; 
+    let reader = BufReader::new(read_file);
+    let write_file = OpenOptions::new().create(true).append(true).open(WRITE_PATH)?;
+    let mut writer = BufWriter::new(write_file);
 
     for line_result in reader.lines() { 
         let line = line_result?;
         let paper: RawPaper = serde_json::from_str(&line)?;
         
-        // comine data into one string
+        // combine data into one string
         let combined_source = paper.source.iter().fold(String::new(), |acc, val| acc + " " + val).trim().to_string();
         let combined_target = paper.target.iter().fold(String::new(), |acc, val| acc + " " + val).trim().to_string();
         
@@ -37,12 +47,27 @@ fn process_file(path: &str) -> Result<(), Box<dyn Error>> {
         let tokens = tokens.into_iter().map(|p| p.id).collect::<Vec<u32>>();
 
         // chunk data
-        let mut chunks = Vec::new();
-        if (tokens.len() as u32) > MAX_TOKENS {
-            todo!("Chunking data...");
+        let mut processed = ProcessedPaper{source:Vec::new(), target: combined_target};
+        let size = tokens.len() as u32;
+        if size > MAX_TOKENS {
+            let mut pointer = 1024;
+            while pointer <= size {
+                // push chunk text
+                processed.source.push(spp.decode_piece_ids(&tokens[((pointer-MAX_TOKENS) as usize)..(pointer as usize)])?);
+                
+                // overlap of MAX_TOKENS/2
+                pointer += OVERLAP;
+                if pointer > size && pointer-size != OVERLAP {
+                    pointer = size;
+                }
+            }
         } else {
-            chunks.push(combined_source);
+            processed.source.push(combined_source);
         }
+
+        // write to file
+        let json_line = serde_json::to_string(&processed)?;
+        writeln!(writer, "{}", json_line)?;
     } 
                                                                
     Ok(())
