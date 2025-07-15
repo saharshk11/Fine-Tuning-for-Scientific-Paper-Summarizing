@@ -2,7 +2,11 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::error::Error;
 use serde::Deserialize;
-use sentencepiece::SentencePieceProcessor;
+use sentencepiece::{SentencePieceProcessor, SentencePieceError};
+
+const DATA_PATH: &str = "../data/test-AIC/dev.jsonl";
+const MODEL_PATH: &str = "models/pegasus/spiece.model";
+const MAX_TOKENS: u32 = 1024;
 
 #[derive(Debug, Deserialize)]
 struct RawPaper {
@@ -10,37 +14,36 @@ struct RawPaper {
     target: Vec<String>
 }
 
-fn main() -> Result<(), Box<dyn Error>>{
-    let data_path = "../data/test-AIC/dev.jsonl";
-    let model_path = "models/pegasus/spiece.model";
-    process_file(data_path, model_path)?;
-
+fn main() -> Result<(), Box<dyn Error>> {
+    process_file(DATA_PATH)?;
     Ok(())
 }
 
-fn process_file(path: &str, model_path: &str) -> Result<(), Box<dyn Error>> {
+fn process_file(path: &str) -> Result<(), Box<dyn Error>> {
     let file = File::open(path)?; 
     let reader = BufReader::new(file);
 
     for line_result in reader.lines() { 
         let line = line_result?;
         let paper: RawPaper = serde_json::from_str(&line)?;
+        
+        // comine data into one string
+        let combined_source = paper.source.iter().fold(String::new(), |acc, val| acc + " " + val).trim().to_string();
+        let combined_target = paper.target.iter().fold(String::new(), |acc, val| acc + " " + val).trim().to_string();
+        
+        // tokenize data
+        let spp = SentencePieceProcessor::open(MODEL_PATH)?;
+        let tokens = spp.encode(&combined_source)?;
+        let tokens = tokens.into_iter().map(|p| p.id).collect::<Vec<u32>>();
 
-        let combined_source = paper.source.iter().fold(String::new(), |acc, val| acc + val).trim().to_string();
-        let combined_target = paper.target.iter().fold(String::new(), |acc, val| acc + val).trim().to_string();
-
-        let num_tokens = count_tokens(&combined_source, model_path)?;
-        println!("Length of text: {num_tokens}");
+        // chunk data
+        let mut chunks = Vec::new();
+        if (tokens.len() as u32) > MAX_TOKENS {
+            todo!("Chunking data...");
+        } else {
+            chunks.push(combined_source);
+        }
     } 
                                                                
     Ok(())
-}
-
-fn count_tokens(text: &String, model_path: &str) -> Result<u32, Box<dyn Error>>{
-    let spp = SentencePieceProcessor::open(model_path)?;
-    let pieces = spp.encode(text)?;
-    let pieces = pieces.into_iter().map(|p| p.piece).collect::<Vec<_>>();
-
-
-    Ok(pieces.len() as u32)
 }
