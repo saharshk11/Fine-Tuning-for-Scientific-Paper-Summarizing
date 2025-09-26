@@ -1,3 +1,18 @@
+# Preprocessing Files
 preprocessing/target/
 preprocessing/Cargo.lock
+
+# Dataset Files
 data/
+
+# Finetuning Files
+finetune/.venv
+## model weights & checkpoints
+*.bin
+*.safetensors
+pytorch_model*.*
+optimizer.pt
+scheduler.pt
+
+## trainer junk
+runs/
